@@ -1,6 +1,7 @@
 package p0_callbackhell_solution;
 
 import p0_callbackhell_solution.services.*;
+import rx.Observable;
 
 import java.util.concurrent.*;
 import java.util.logging.Logger;
@@ -16,28 +17,30 @@ public class CompletableFutureSolution {
 
         long startTime = System.nanoTime();
 
-        // get f3 with dependent result from f1
-
+        // get C with dependent result from A
         CompletableFuture<String> asyncResultA = new CallToRemoteServiceA().getAsync();
         CompletableFuture<String> asyncResultC =
-                asyncResultA.thenCompose(resultA -> new CallToRemoteServiceC(resultA).getAsync());
+                asyncResultA.thenApply(resultA -> new CallToRemoteServiceC(resultA).getAsync().join());
 
-        // get f4/f5 after dependency f2 completes (needs to be nested in same resultB flat-mapping)
+        // get D * E after dependency B completes
         CompletableFuture<Integer> asyncResultB = new CallToRemoteServiceB().getAsync();
         CompletableFuture<Integer> asyncResultDTimesE =
-                asyncResultB.thenCompose(
-                        resultB -> new CallToRemoteServiceD(resultB).getAsync()
-                                .thenCombine(new CallToRemoteServiceE(resultB).getAsync(),
-                                        (d, e) -> d * e));
+                asyncResultB.thenCompose(resultB -> {
+                    CompletableFuture<Integer> asyncResultD = new CallToRemoteServiceD(resultB).getAsync();
+                    CompletableFuture<Integer> asyncResultE = new CallToRemoteServiceE(resultB).getAsync();
+                    return asyncResultD.thenCombine(asyncResultE,
+                                             (resultD, resultE) -> resultD * resultE);
+                });
 
         // combine results
         CompletableFuture<Void> asyncResultProcessor =
-                asyncResultC.thenCombine(asyncResultDTimesE, (c, dTimesE) -> c + " => " + dTimesE)
-                .thenAccept((result) -> {
-                    logger.severe(result);
-                    logger.info("took: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime) + "ms");
-                    CallToRemoteService.DEFAULT_EXECUTOR.shutdownNow();
-                });
+                CompletableFuture.allOf(asyncResultC, asyncResultDTimesE)
+                    .thenApply(ignored -> asyncResultC.join() + " => " + asyncResultDTimesE.join())
+                    .thenAccept(result -> {
+                        logger.severe(result);
+                        logger.info("took: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime) + "ms");
+                        CallToRemoteService.DEFAULT_EXECUTOR.shutdownNow();
+                    });
 
         CallToRemoteService.DEFAULT_EXECUTOR.submit((Callable<Void>) asyncResultProcessor::get);
     }

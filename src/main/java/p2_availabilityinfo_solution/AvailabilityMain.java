@@ -18,18 +18,14 @@ public class AvailabilityMain {
         Observable.combineLatest(Arrays.asList(availabilityService.isAppServerAvailable(),
                                                availabilityService.isDatabaseAvailable(),
                                                availabilityService.isExternalSystemAvailable()),
-                                 currentStatusInfos ->
-                                                       !Arrays.stream(currentStatusInfos)
-                                                               .filter(statusInfo -> statusInfo instanceof Boolean)
-                                                               .map(o -> (Boolean) o)
-                                                               .anyMatch(b -> !b))
-                                         .distinctUntilChanged()
-                                         .map(allServicesAvailable -> allServicesAvailable ? "YES" : "NO")
-                                         .subscribe(status -> logger.severe("All services available: " + status));
+                                 (currentStatusInfos) -> Arrays.stream(currentStatusInfos)
+                                                 .allMatch(objStatus -> (Boolean) objStatus))
+                .distinctUntilChanged()
+                .map(allServicesAvailable -> allServicesAvailable ? "YES" : "NO")
+                .subscribe(status -> logger.severe("All services available: " + status));
 
         logger.info("EXIT checkServiceAvailabilityAsync");
     }
-
 
 
     @SuppressWarnings({"InfiniteLoopStatement", "StatementWithEmptyBody"})
